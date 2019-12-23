@@ -1,0 +1,224 @@
+ <!DOCTYPE html>
+ <html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, user-scalable=no">
+		<title>XYZ Maps Example: Hover POI to Highlight connected Link</title>
+
+	   	<script src="${XYZ_COMMON_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_CORE_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_DISPLAY_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_EDITOR_PATH}" type="text/javascript" charset="UTF-8" ></script>
+
+
+ 		<style type="text/css">
+			#map {
+				position: absolute;
+            	overflow: hidden;
+				top: 0;
+				left: 0;
+				width: 100%;
+                height: 100%;
+			}
+
+ 		</style>
+	</head>
+	<body>
+	<div id="map"></div>
+
+	<script type="application/javascript">
+		// specify credentials
+      	var YOUR_ACCESS_TOKEN = window.parent.YOUR_ACCESS_TOKEN;
+
+		// Define customized Provider that extends from SpaceProvider
+		class MyProvider extends here.xyz.maps.providers.SpaceProvider {
+
+			// detect feature class by "featureClass" in feature's properties
+			detectFeatureClass(feature) {
+				return feature.properties.featureClass;
+			}
+
+			// read routing point value from Address or Place property
+			// implementing this function is necessary only if there were Address or Place in Space
+			readRoutingPosition(feature) {
+				return feature.prop('routingPoint');
+			}
+
+			// read id of routing link from Address or Place property
+			// implementing this function is necessary only if there were Address or Place in Space
+			readRoutingLink(feature) {
+				return feature.prop('routingLink');
+			}
+
+			// write routing point to Address or Place
+			// implementing this function is necessary only if there were Address or Place in Space
+			writeRoutingPosition(feature, position) {
+				feature.prop('routingPoint', position);
+			}
+
+			// write id of routing link to Address or Place
+			// implementing this function is necessary only if there were Address or Place in Space
+			writeRoutingLink(feature, link) {
+				feature.prop('routingLink', link ? link.id : link);
+			}
+
+			// read turn restriction value from Link property
+			// implementing this function is necessary only if there was Link in Space
+			readTurnRestriction(from, to) {
+				let turn = from.link.prop('turnRestriction') || {};
+				// first shape point is 'start' and the last one is 'end'
+				let restrictions = turn[from.index ? 'end' : 'start'] || [];
+
+				// check if the id of to-link is already restricted
+				return restrictions.indexOf(to.link.id) >= 0;
+			};
+
+			// edit turn restriction value on Link
+			// implementing this function is necessary only if there was Link in Space
+			writeTurnRestriction(restricted, from, to) {
+				let turn = from.link.prop('turnRestriction') || {};
+				let node = from.index ? 'end' : 'start';
+				let restrictions = turn[node] = turn[node] || [];
+				let index = restrictions.indexOf(to.link.id);
+
+				if (restricted) {
+					if (index == -1) {
+						// add id of to-link to restrictions array
+						restrictions.push(to.link.id);
+					}
+				} else if (index >= 0) {
+					// remove the id out of restrictions array if the link was restricted
+					restrictions.splice(index, 1);
+				}
+
+				// set turnRestriction to from-link
+				from.link.prop('turnRestriction', turn);
+			}
+
+			// read if the Link is pedestrian only
+			// implementing this function is necessary only if there was Link in Space
+			readPedestrianOnly(feature) {
+				return Boolean(feature.prop('pedestrianOnly'));
+			}
+
+			// read the direction value on Link, expected values are: 'BOTH', 'START_TO_END' or 'END_TO_START'
+			// implementing this function is necessary only if there was Link in Space
+			readDirection(feature) {
+				return feature.prop('direction') || 'BOTH';
+			}
+
+			// Address or Place connects to a Link with its 'routingLink' and 'routingPoint' properties,
+			// the connected Link could be either in the same space as the Address or Place is or in a different space,
+			// this function returns id of provider which contains space of the connected Link
+			readRoutingProvider(location, providers) {
+				for (let provider of providers) {
+            		// id of link provider should have keyword 'link'
+					if (provider.id.toLowerCase().indexOf('link') >= 0) {
+						return provider.id;
+					}
+				}
+			}
+		}
+
+		var bgLayer = new here.xyz.maps.layers.MVTLayer({
+			name: 'background layer',
+			min: 1,
+			max: 20,
+			remote: {
+				url: 'https://xyz.api.here.com/tiles/osmbase/256/all/{z}/{x}/{y}.mvt?access_token='+YOUR_ACCESS_TOKEN
+			}
+		});
+		var linkLayer = new here.xyz.maps.layers.TileLayer({
+			name: 'my Link Layer',
+			min: 14,
+			max: 20,
+			// Customized provider to provide objects
+			provider: new MyProvider({
+				id: "linkProvider",
+				space: "playground-link",
+				credentials: {
+					access_token: YOUR_ACCESS_TOKEN
+				},
+				level: 15,
+				class: "NAVLINK"
+			}),
+			style: {
+				styleGroups: {
+					link: [
+						{zIndex:1, type:"Line", stroke:"#1188DD", strokeWidth:10},
+						{zIndex:2, type:"Text", textRef:"properties.name", fill:"#3D272B"}
+					]
+				},
+				assign: function(feature, zoomlevel){
+					return "link";
+				}
+			}
+		});
+
+		var placeLayer = new here.xyz.maps.layers.TileLayer({
+			name: 'my Place Layer',
+			min: 14,
+			max: 20,
+			// Customized provider to provide objects
+			provider: new MyProvider({
+				name: "Objects",
+				space: "playground-place",
+				credentials: {
+					access_token: YOUR_ACCESS_TOKEN
+				},
+				level: 15
+			}),
+			style: {
+				styleGroups: {
+					place: [
+						{zIndex: 3, type: "Circle", radius:12, strokeWidth:2, "stroke": "#FFFFFF", "fill": "#1188DD"}
+					]
+				},
+				assign: function(feature, zoomlevel){
+					return "place";
+				}
+			}
+		});
+
+        // setup the Map Display
+		window.display = new  here.xyz.maps.Map( document.getElementById("map"), {
+                zoomLevel : 19,
+                center: {
+                    longitude: 76.59078, latitude: 8.87959
+                },
+
+                // add layers to display
+                layers: [bgLayer, linkLayer, placeLayer]
+            });
+
+		// setup the editEngine
+        var editor = new here.xyz.maps.editor.Editor( display );
+
+		// add layer to editor, make it editable
+		editor.addLayer( linkLayer );
+		editor.addLayer( placeLayer );
+
+
+/*###visiblesource*/
+// register pointerenter listener
+editor.addEventListener("pointerenter", function(e){
+	// Get feature in event
+	var feature = e.target;
+	// mouse enters a place
+	if(feature && feature.geometry.type == "Point"){
+		// get connected link
+		var link = editor.getFeature(feature.prop('routingLink'), linkLayer);
+
+		// style the connected link if it exists
+		if(link)
+			linkLayer.setStyleGroup(link, [
+				{zIndex: 0, type: "Line", stroke: "#BE6B65", "strokeDasharray": "none", "strokeLinecap": "round", "strokeLinejoin": "round", strokeWidth:16},
+				{zIndex: 1, type: "Line", stroke: "#E6A08C", "strokeDasharray": "none", "strokeLinecap": "round", "strokeLinejoin": "round", strokeWidth:12}
+			]);
+	}
+})
+
+// pre-registered pointerleave listener restores connected link style
+/*visiblesource###*/
+		</script>
+	</body>
+</html>

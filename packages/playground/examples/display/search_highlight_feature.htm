@@ -1,0 +1,125 @@
+ <!DOCTYPE html>
+ <html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, user-scalable=no">
+		<title>XYZ Maps Example: Search and highlight features</title>
+
+	    <script src="${XYZ_COMMON_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_CORE_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_DISPLAY_PATH}" type="text/javascript" charset="UTF-8" ></script>
+
+
+ 		<style type="text/css">
+			#map {
+				position: absolute;
+            	overflow: hidden;
+				top: 0;
+				left: 0;
+				width: 100%;
+                height: 100%;
+			}
+			#searcharea {
+				position: absolute;
+				top: 200px;
+				left:100px;
+				right: 100px;
+				bottom: 200px;
+				background-color: #0000C0;
+				opacity: 0.3;
+                pointer-events: none;
+			}
+ 		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+
+		<script type="application/javascript">
+			//specify your credentials for image and link layers
+	      	var YOUR_ACCESS_TOKEN = window.parent.YOUR_ACCESS_TOKEN;
+
+			var bgLayer = new here.xyz.maps.layers.MVTLayer({
+				name: 'background layer',
+				min: 1,
+				max: 20,
+				remote: {
+					url: 'https://xyz.api.here.com/tiles/osmbase/256/all/{z}/{x}/{y}.mvt?access_token='+YOUR_ACCESS_TOKEN
+				}
+			});
+			var placeLayer = new here.xyz.maps.layers.TileLayer({
+				name: 'myLayer',
+				min: 14,
+				max: 20,
+				provider: new here.xyz.maps.providers.SpaceProvider ({
+					name:  'SpaceProvider',
+					level: 14,
+					space: 'playground-place',
+					credentials: {
+						access_token: YOUR_ACCESS_TOKEN
+					}
+				})
+			});
+
+			// setup the Map Display
+			window.display = new  here.xyz.maps.Map( document.getElementById("map"), {
+			    zoomLevel : 17,
+			    center: {
+			        longitude: -117.91925858209551, latitude: 33.64564789422555
+			    },
+			    // add layers to display
+			    layers: [bgLayer, placeLayer]
+			});
+
+			// A Display tag shows search area
+			var searcharea = document.createElement("div");
+				searcharea.id = "searcharea";
+			display.getContainer().appendChild(searcharea);
+
+/*###visiblesource*/
+var searchResult = [];
+var styleGroup =
+	[
+		{zIndex: 0, type: "Rect", fill: "#000", width:24, height:14},
+		{zIndex: 0, type: "Circle", radius: 7, fill:"#000", offsetX: -12},
+		{zIndex: 0, type: "Circle", radius: 7, fill:"#000", offsetX:12},
+		{zIndex: 1, type: "Circle", radius: 5, fill:"yellow"},
+		{zIndex: 1, type: "Circle", radius: 5, fill:"green", offsetX:11},
+		{zIndex: 1, type: "Circle", radius: 5, fill:"red", offsetX:-11}
+	]
+
+
+// Set feature style group
+function setStyleGroup(features, style){
+	for(var i in features){
+		var feature = features[i];
+		placeLayer.setStyleGroup(feature, style);
+	}
+}
+
+// add event listener to viewportReady
+placeLayer.addEventListener('viewportReady', function(evt){
+	// Calculate viewbound for search
+	var topLeft = display.pixelToGeo(100, 200);
+	var bottomRight = display.pixelToGeo(display.getWidth() - 100, display.getHeight() - 200);
+
+	// Reset feature style
+	setStyleGroup(searchResult)
+
+	// Search for features by viewbound
+	searchResult = placeLayer.search({
+			rect: {
+				minLon: topLeft.longitude,
+				minLat: bottomRight.latitude,
+				maxLon: bottomRight.longitude,
+				maxLat: topLeft.latitude
+			}
+		});
+
+	// Highlight features
+	setStyleGroup(searchResult, styleGroup);
+});
+
+/*visiblesource###*/
+
+		</script>
+	</body>
+</html>

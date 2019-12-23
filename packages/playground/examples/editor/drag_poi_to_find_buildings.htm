@@ -1,0 +1,203 @@
+ <!DOCTYPE html>
+ <html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, user-scalable=no">
+		<title>XYZ Maps Example: Drag a Place to Find Buildings</title>
+
+	   	<script src="${XYZ_COMMON_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_CORE_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_DISPLAY_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_EDITOR_PATH}" type="text/javascript" charset="UTF-8" ></script>
+
+
+ 		<style type="text/css">
+			#map {
+				position: absolute;
+            	overflow: hidden;
+				top: 0;
+				left: 0;
+				width: 100%;
+                height: 100%;
+			}
+
+ 		</style>
+	</head>
+	<body>
+	<div id="map"></div>
+
+	<script type="application/javascript">
+		// specify credentials
+      	var YOUR_ACCESS_TOKEN = window.parent.YOUR_ACCESS_TOKEN;
+
+		// Define customized Provider that extends from SpaceProvider
+		class MyProvider extends here.xyz.maps.providers.SpaceProvider {
+
+			// Detect feature class by geometry type
+			detectFeatureClass(feature) {
+				if(feature.geometry.type == 'LineString'){
+					return 'NAVLINK';
+				}
+				else if(feature.geometry.type == 'Point'){
+					return 'PLACE';
+				}
+				else {
+					return 'AREA'
+				}
+			}
+
+			// Get routing point of the feature
+			readRoutingPosition(feature) {
+				return feature.prop('rp');
+			}
+
+			// Get id of the link to which the feature connects
+			readRoutingLink(feature) {
+				return feature.prop('link');
+			}
+
+			// Update routing point of the feature
+			writeRoutingPosition(feature, position) {
+				feature.prop('rp', position);
+			}
+
+			// Update id of the link to which the feature connects
+			writeRoutingLink(feature, link) {
+				feature.prop('link', link ? link.id : link);
+			}
+
+			// There is no turn restriction from link A to B
+			readTurnRestriction(A, B) {
+				return false;
+			};
+
+			// Do nothing for editing turn restriction
+			writeTurnRestriction(restricted, A, B) {
+			}
+
+			// The feature is not pedestrian only
+			readPedestrianOnly(feature) {
+				return false
+			}
+
+			// The feature is two-way street, valid value: 'BOTH' | 'START_TO_END' | 'END_TO_START'
+			readDirection(feature) {
+				return 'BOTH';
+			}
+
+			// Get the id of the provider which have the links to which the points connect
+			readRoutingProvider(location, providers) {
+				for(let p in providers) {
+					if(providers[p].class == 'NAVLINK')
+						return providers[p].id;
+				}
+			}
+		}
+
+		var layers = [
+			new here.xyz.maps.layers.MVTLayer({
+				name: 'background layer',
+				min: 1,
+				max: 20,
+				remote: {
+					url: 'https://xyz.api.here.com/tiles/osmbase/256/all/{z}/{x}/{y}.mvt?access_token='+YOUR_ACCESS_TOKEN
+				}
+			}),
+			new here.xyz.maps.layers.TileLayer({
+				name: 'Building Layer',
+		        min: 14,
+		        max: 20,
+				// Customized provider to provide objects
+				provider: new MyProvider({
+					name: "Buildings",
+					space: "playground-building",
+					credentials: {
+						access_token: YOUR_ACCESS_TOKEN
+					},
+					level: 15
+				})
+			}),
+			new here.xyz.maps.layers.TileLayer({
+				name: 'Link Layer',
+		        min: 14,
+		        max: 20,
+				// Customized provider to provide objects
+				provider: new MyProvider({
+					name: "Objects",
+					space: "playground-link",
+					credentials: {
+						access_token: YOUR_ACCESS_TOKEN
+					},
+					level: 15,
+					class: "NAVLINK"
+				})
+			}),
+			new here.xyz.maps.layers.TileLayer({
+				name: 'POI Layer',
+		        min: 14,
+		        max: 20,
+				// Customized provider to provide objects
+				provider: new MyProvider({
+					name: "POIs",
+					space: "playground-place",
+					credentials: {
+						access_token: YOUR_ACCESS_TOKEN
+					},
+					level: 14
+				})
+			})
+		]
+        // setup the Map Display
+		window.display = new  here.xyz.maps.Map( document.getElementById("map"), {
+                zoomLevel : 19,
+                center: {
+                    longitude: -122.404911, latitude: 37.756719
+                },
+
+                // add layers to display
+                layers: layers
+            });
+
+		// setup the editEngine
+        var editor = new here.xyz.maps.editor.Editor( display );
+
+		// add poi layer to editor, make it editable
+		editor.addLayer( layers[3] );
+
+
+/*###visiblesource*/
+// get building layer
+var buildingLayer = layers[1];
+var building = [];
+
+// predefined building style
+var dragStopStyle = [
+	{zIndex: 0, type:"Polygon", fill: "#86B225", strokeWidth: 1, stroke: "#545758"}
+];
+
+editor.addEventListener("dragStop", function(e){
+	// reset to default style for building selected in previouse dragstop
+	if(building.length) {
+		buildingLayer.setStyleGroup(building[0]);
+		building = [];
+	}
+
+	var gCoord = e.target.coord();
+	var pCoord = display.geoToPixel({latitude: gCoord[1], longitude: gCoord[0]});
+
+	// search for buildings that are under this Place
+	var searchResults = display.getFeaturesAt({minX: pCoord.x-200, minY: pCoord.y-200, maxX: pCoord.x+200, maxY: pCoord.y+200}, {layers:[buildingLayer]});
+	console.log(searchResults, "ddddddddddd")
+	// loop over the search result to find building object
+
+		// if(searchResults)
+			// building = searchResults[r].result;
+//
+	// // highlight the building if any was found
+	// if(building.length)
+		// buildingLayer.setStyleGroup(building[0], dragStopStyle);
+})
+
+/*visiblesource###*/
+		</script>
+	</body>
+</html>

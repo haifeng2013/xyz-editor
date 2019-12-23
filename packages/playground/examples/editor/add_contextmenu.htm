@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, user-scalable=no">
+		<title>XYZ Maps Example: Confirm changes</title>
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js" type="text/javascript"></script>
+
+	   	<script src="${XYZ_COMMON_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_CORE_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_DISPLAY_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_EDITOR_PATH}" type="text/javascript" charset="UTF-8" ></script>
+
+
+		<style type="text/css">
+			#map {
+				position: absolute;
+            	overflow: hidden;
+				top: 0;
+				left: 0;
+				width: 100%;
+                height: 100%;
+			}
+			.contextmenu {
+				position: absolute;
+				background: #fff;
+				z-index: 2000;
+				border: 3px solid #CDCDCD;
+				list-style: none outside none;
+				padding: 5px;
+				border-radius: 3px 3px 3px 3px;
+				box-shadow: 0 0 15px #999999;
+				color: #373D49;
+			}
+			.contextmenu li {
+				cursor: pointer;
+			}
+			.contextmenu li:hover {
+				background: #eee;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<script>
+		// specify credentials
+      	var YOUR_ACCESS_TOKEN = window.parent.YOUR_ACCESS_TOKEN;
+
+		// Define customized Provider that extends from SpaceProvider
+		class MyProvider extends here.xyz.maps.providers.SpaceProvider {
+
+			// detect feature class by "featureClass" in feature's properties
+			detectFeatureClass(feature) {
+				return feature.properties.featureClass;
+			}
+
+			// read routing point value from Address or Place property
+			// implementing this function is necessary only if there were Address or Place in Space
+			readRoutingPosition(feature) {
+				return feature.prop('routingPoint');
+			}
+
+			// read id of routing link from Address or Place property
+			// implementing this function is necessary only if there were Address or Place in Space
+			readRoutingLink(feature) {
+				return feature.prop('routingLink');
+			}
+
+			// write routing point to Address or Place
+			// implementing this function is necessary only if there were Address or Place in Space
+			writeRoutingPosition(feature, position) {
+				feature.prop('routingPoint', position);
+			}
+
+			// read turn restriction value from Link property
+			// implementing this function is necessary only if there was Link in Space
+			readTurnRestriction(from, to) {
+				let turn = from.link.prop('turnRestriction') || {};
+				// first shape point is 'start' and the last one is 'end'
+				let restrictions = turn[from.index ? 'end' : 'start'] || [];
+
+				// check if the id of to-link is already restricted
+				return restrictions.indexOf(to.link.id) >= 0;
+			};
+
+			// edit turn restriction value on Link
+			// implementing this function is necessary only if there was Link in Space
+			writeTurnRestriction(restricted, from, to) {
+				let turn = from.link.prop('turnRestriction') || {};
+				let node = from.index ? 'end' : 'start';
+				let restrictions = turn[node] = turn[node] || [];
+				let index = restrictions.indexOf(to.link.id);
+
+				if (restricted) {
+					if (index == -1) {
+						// add id of to-link to restrictions array
+						restrictions.push(to.link.id);
+					}
+				} else if (index >= 0) {
+					// remove the id out of restrictions array if the link was restricted
+					restrictions.splice(index, 1);
+				}
+
+				// set turnRestriction to from-link
+				from.link.prop('turnRestriction', turn);
+			}
+
+			// read if the Link is pedestrian only
+			// implementing this function is necessary only if there was Link in Space
+			readPedestrianOnly(feature) {
+				return Boolean(feature.prop('pedestrianOnly'));
+			}
+
+			// read the direction value on Link, expected values are: 'BOTH', 'START_TO_END' or 'END_TO_START'
+			// implementing this function is necessary only if there was Link in Space
+			readDirection(feature) {
+				return feature.prop('direction') || 'BOTH';
+			}
+
+			// Address or Place connects to a Link with its 'routingLink' and 'routingPoint' properties,
+			// the connected Link could be either in the same space as the Address or Place is or in a different space,
+			// this function returns id of provider which contains space of the connected Link
+			readRoutingProvider(location, providers) {
+				for (let provider of providers) {
+            		// id of link provider should have keyword 'link'
+					if (provider.id.toLowerCase().indexOf('link') >= 0) {
+						return provider.id;
+					}
+				}
+			}
+		}
+
+
+/*###visiblesource*/
+var bgLayer = new here.xyz.maps.layers.MVTLayer({
+	name: 'background layer',
+	min: 1,
+	max: 20,
+	remote: {
+		url: 'https://xyz.api.here.com/tiles/osmbase/256/all/{z}/{x}/{y}.mvt?access_token='+YOUR_ACCESS_TOKEN
+	}
+});
+var linkLayer = new here.xyz.maps.layers.TileLayer({
+	name: 'Link Layer',
+	min: 14,
+	max: 20,
+	// link provider to provide link objects
+	provider: new MyProvider({
+		id: "Links",
+		space: "playground-link",
+		credentials: {
+			access_token: YOUR_ACCESS_TOKEN
+		},
+		level: 14
+	})
+})
+
+// setup the Map Display
+window.display = new  here.xyz.maps.Map( document.getElementById("map"), {
+    zoomLevel : 17,
+    center: {
+        latitude:37.796478, longitude:-122.25392
+    },
+    // add layers to display
+    layers: [bgLayer, linkLayer]
+});
+
+// setup the editEngine
+var editor = new here.xyz.maps.editor.Editor( display );
+
+// add link layer to editor, make layers editable
+editor.addLayer( linkLayer );
+
+/**
+ * Add a listener for the click-event
+ */
+editor.addEventListener('pointerup', function(event) {
+	$('.contextmenu').remove();
+
+	// react only on right click!
+	if(event.button == 2) {
+		// supported methods of the objects.
+		// if the value is null, it will be ignored
+		var object = event.target,
+			contextMenuHtml = '<ul class="contextmenu">',
+			labels = {
+				remove : 'Delete Object',
+				splitLink : 'Split...',
+				disconnect : 'Disconnect',
+				addShape : 'Add shape point'
+			};
+
+		// iterate methods in object and add them into contextmenu
+		for(var i in labels) {
+			if(object && object[i] && i!= "constructor") {
+				contextMenuHtml += '<li rel="' + i + '">' + labels[i] + '</li>';
+			}
+		}
+		// add Show coordinates method to contextmenu
+		contextMenuHtml += '<li rel="showCoords">Show Coordinates</li>';
+		// universal method independent from the object
+		contextMenuHtml += '</ul>';
+		$(editor.container).append(contextMenuHtml);
+
+		// set offset of the contextmenu
+		$('.contextmenu').css({
+			left : event.mapX,
+			top : event.mapY
+		});
+
+		// add the clickevent for the items of the menu
+		$('.contextmenu li').click(function() {
+			var id = $(this).attr('rel');
+
+			// remove existing contextmenu
+			$('.contextmenu').remove();
+
+			switch (id) {
+				// showCoords is not a method of the objects. So we implement it manually.
+				case 'showCoords':
+					var coord = editor.pixelToGeo({x: event.mapX, y: event.mapY});
+					alert('Longitude: ' + coord.longitude + ', Latitude: ' + coord.latitude);
+					break;
+				case 'addShape':
+					object[id]({x: event.mapX, y: event.mapY});
+					break;
+				// all other methods are methods of the object. call them.
+				default:
+					object[id]();
+			}
+		});
+	}
+});
+/*visiblesource###*/
+		</script>
+	</body>
+</html>

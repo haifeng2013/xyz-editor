@@ -1,0 +1,193 @@
+ <!DOCTYPE html>
+ <html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, user-scalable=no">
+		<title>XYZ Maps Example: Animate a POI</title>
+
+	   	<script src="${XYZ_COMMON_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_CORE_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_DISPLAY_PATH}" type="text/javascript" charset="UTF-8" ></script>
+	    <script src="${XYZ_EDITOR_PATH}" type="text/javascript" charset="UTF-8" ></script>
+
+
+ 		<style type="text/css">
+			#map {
+				position: absolute;
+            	overflow: hidden;
+				top: 0;
+				left: 0;
+				width: 100%;
+                height: 100%;
+			}
+ 		</style>
+	</head>
+	<body>
+	<div id="map"></div>
+
+	<script type="application/javascript">
+		// specify credentials
+      	var YOUR_ACCESS_TOKEN = window.parent.YOUR_ACCESS_TOKEN;
+
+		// Define customized Provider that extends from SpaceProvider
+		class MyProvider extends here.xyz.maps.providers.SpaceProvider {
+
+			// Detect feature class by geometry type
+			detectFeatureClass(feature) {
+				return 'NAVLINK';
+			}
+
+			// Get routing point of the feature
+			readRoutingPosition(feature) {
+				return feature.prop('rp');
+			}
+
+			// Get id of the link to which the feature connects
+			readRoutingLink(feature) {
+				return feature.prop('link');
+			}
+
+			// Update routing point of the feature
+			writeRoutingPosition(feature, position) {
+				feature.prop('rp', position);
+			}
+
+			// Update id of the link to which the feature connects
+			writeRoutingLink(feature, link) {
+				feature.prop('link', link ? link.id : link);
+			}
+
+			// There is no turn restriction from link A to B
+			readTurnRestriction(A, B) {
+				return false;
+			};
+
+			// Do nothing for editing turn restriction
+			writeTurnRestriction(restricted, A, B) {
+			}
+
+			// The feature is not pedestrian only
+			readPedestrianOnly(feature) {
+				return false
+			}
+
+			// The feature is two-way street, valid value: 'BOTH' | 'START_TO_END' | 'END_TO_START'
+			readDirection(feature) {
+				return 'BOTH';
+			}
+
+			// Get the id of the provider which have the links to which the points connect
+			readRoutingProvider(location, providers) {
+				// The single layer in editor has links in this example
+				return providers[0].id;
+			}
+		}
+
+		var bgLayer = new here.xyz.maps.layers.MVTLayer({
+			name: 'background layer',
+			min: 1,
+			max: 20,
+			remote: {
+				url: 'https://xyz.api.here.com/tiles/osmbase/256/all/{z}/{x}/{y}.mvt?access_token='+YOUR_ACCESS_TOKEN
+			}
+		});
+		var linkLayer = new here.xyz.maps.layers.TileLayer({
+			name: 'Link Layer',
+			min: 14,
+			max: 20,
+			// Customized provider to provide objects
+			provider: new MyProvider({
+				name: "Objects",
+				space: "playground-link",
+				credentials: {
+					access_token: YOUR_ACCESS_TOKEN
+				},
+				level: 14
+			})
+		});
+		var placeLayer = new here.xyz.maps.layers.TileLayer({
+			name: 'POI Layer',
+			min: 14,
+			max: 20,
+			// Customized provider to provide objects
+			provider: new MyProvider({
+				name: "POIs",
+				space: "playground-place",
+				credentials: {
+					access_token: YOUR_ACCESS_TOKEN
+				},
+				level: 14
+			}),
+			style: {
+				style: [
+					[0, {radius:8, strokeWidth:2, "stroke": "#FFFFFF", "fill": "#1188DD"}]
+				],
+				get: function(){
+					return this.style;
+				}
+			}
+		});
+
+        // setup the Map Display
+		window.display = new  here.xyz.maps.Map( document.getElementById("map"), {
+                zoomLevel : 17,
+                center: {
+                    longitude: -122.641908, latitude: 41.441067
+                },
+
+                // add layers to display
+                layers: [bgLayer, linkLayer, placeLayer]
+            });
+
+		// setup the editEngine
+        var editor = new here.xyz.maps.editor.Editor( display );
+
+		// add link and poi layer to editor, make layers editable
+		editor.addLayer( linkLayer );
+		editor.addLayer( placeLayer );
+
+/*###visiblesource*/
+// create a poi and add it to editor
+var poi = editor.addFeature(new here.xyz.maps.editor.features.Place(new here.xyz.maps.editor.PixelCoordinate(100, 200), { type : 5800 }));
+
+var coords, currentCoord;
+var fps = 5; // number of frames per sec
+var then = performance.now();
+var now, elapsed;
+
+function animateLine(timestamp) {
+	now = performance.now();
+	elapsed = now -then;
+
+	if(elapsed > 1000 / fps){
+	    if(coords.length == 0)
+	    // revert all changes to link if one animation finishes
+	        editor.revert();
+	    else{
+	        currentCoord = coords.pop();
+
+	        // set poi coordinate
+	        poi.coord(currentCoord);
+	    }
+
+	    then = now;
+    }
+
+    // Request the next frame of the animation.
+    requestAnimationFrame(animateLine);
+}
+
+function editorReady(ready, nv, ov) {
+	if(nv == false){
+		// get a link and its coordinates
+		var link = editor.getFeature(862858949, "v1/navlink");
+		coords = link.coord();
+
+		animateLine(performance.now());
+	}
+}
+
+editor.addObserver("ready", editorReady);
+/*visiblesource###*/
+		</script>
+	</body>
+</html>
