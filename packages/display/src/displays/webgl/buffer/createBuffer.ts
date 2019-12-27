@@ -20,18 +20,16 @@
 import {TaskManager} from '@here/xyz-maps-common';
 import {GeometryBuffer} from './GeometryBuffer';
 import {GeometryGroup} from './GeometryGroup';
-// import {addFeature} from './addFeature';
 import {getValue} from '../../styleTools';
 import {tile} from '@here/xyz-maps-core';
 import {Layer} from '../../Layers';
-// import {IconManager} from '../IconManager';
 import {FeatureFactory} from './FeatureFactory';
 
 
 const tileUtils = tile.Utils;
 
 // const DEFAULT_STROKE_WIDTH_ZOOM_SCALE = () => 1;
-const PROCESS_FEATURE_BUNDLE_SIZE = 32;
+const PROCESS_FEATURE_BUNDLE_SIZE = 24;
 const EXCLUSIVE_TIME_MS = 4;
 const PRIORITY = 4;
 
@@ -223,7 +221,6 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
         name: 'createBuffer',
 
         onDone: function() {
-            // if(tile.quadkey != '023013221213200122')return onDone([], this);
             let geomBuffers = {};
             let tArrayCache = new WeakMap();
             let buffers = [];
@@ -240,7 +237,6 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
             // let z = groups.length;
             // for (let z = 0; z < groups.length; z++) {
             // while (z--) {
-
             for (let zoom in groups) {
                 let z: string | number = zoom;
                 zGroup = groups[z];
@@ -314,7 +310,9 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
 
                             buffers.push(geoBuffer);
 
-                            if (grp.index.length) {
+
+                            let {index} = grp;
+                            if (index && index.length) {
                                 // if (type != 'Image' && type != 'Text') {
                                 // TODO: clenup -> icon/text not using index..so can't be shared..
                                 geomBuffers[type] = geoBuffer;
@@ -333,9 +331,9 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
                             geoGroup = new GeometryGroup({
                                 first: first,
                                 count: grp.last / size - first
-                            }, vertexType);
+                            }, type);
                         } else {
-                            if (!grp.index.length) continue;
+                            if (!grp.index || !grp.index.length) continue;
                             geoGroup = geoBuffer.createGroup(grp.index, type);
                         }
 
@@ -375,9 +373,12 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
                                 }
                             } else if (type == 'Line') {
                                 geoGroup.addAttribute('a_normal', {
-                                    data: typeArray(Int8Array, vertexGroups.LineString.normal, tArrayCache),
-                                    normalized: true,
-                                    size: 2
+                                    // data: typeArray(Int8Array, grp.data.normal, tArrayCache),
+                                    // normalized:true,
+                                    // data: typeArray(Float32Array, grp.data.normal, tArrayCache),
+                                    data: typeArray(Int16Array, grp.data.normal, tArrayCache),
+                                    // normalized: false,
+                                    size: 4
                                 });
 
                                 let capScale = 1 / .7;
@@ -387,7 +388,8 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
                                     geoGroup.addUniform('u_texWidth', grp.texture.width);
                                     geoGroup.addUniform('u_pattern', 0);
                                     geoGroup.addAttribute('a_lengthSoFar', {
-                                        data: typeArray(Uint16Array, vertexGroups.LineString.lengthSoFar, tArrayCache),
+                                        data: typeArray(Uint16Array, grp.data.lengthSoFar, tArrayCache),
+                                        // data: typeArray(Uint16Array, vertexGroups.LineString.lengthSoFar, tArrayCache),
                                         normalized: false,
                                         size: 1
                                     });
@@ -455,7 +457,6 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
                 }
             }
 
-            // console.log(buffers);
             onDone(buffers.reverse(), iconsLoaded);
         },
 

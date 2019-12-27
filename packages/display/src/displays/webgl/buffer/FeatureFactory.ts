@@ -16,11 +16,10 @@
  * SPDX-License-Identifier: Apache-2.0
  * License-Filename: LICENSE
  */
-
 import {addText} from './addText';
 import {addLineText} from './addLineText';
 import {addPoint} from './addPoint';
-import {addIndices, addLineString} from './addLineString';
+import {addLineString} from './addLineString';
 import {addPolygon} from './addPolygon';
 import {addExtrude} from './addExtrude';
 import {addIcon} from './addIcon';
@@ -64,6 +63,20 @@ const getTextString = (style, feature, level: number) => {
     }
 };
 
+
+class PointData {
+    vertex = [];
+    size = 2;
+    scissor = true;
+}
+
+class LineData {
+    vertex = [];
+    normal = [];
+    lengthSoFar = [];
+    size = 2;
+    scissor = true;
+}
 
 class SymbolData {
     point = [];
@@ -318,8 +331,8 @@ class FeatureFactory {
                         rotation: rotation,
                         offsetX: offsetX,
                         offsetY: offsetY
-                    },
-                    index: []
+                    }
+                    // ,index: []
                 };
             } else {
                 group = zGrouped[index];
@@ -392,39 +405,40 @@ class FeatureFactory {
                         group.texture = this.icons.getTexture();
                         group.last = iGrp.vertex.length;
                     } else if (type == 'Circle' || type == 'Rect') {
-                        if (!vertexDataAdded) {
-                            vertexDataAdded = true;
-                            if (!addPoint(vertex, coordinates, tile, tileSize)) {
-                                // in case of point has not been added because it's not inside tile
-                                // -> we can skip it.
-                                return allReady;
-                            }
+                        if (!group.data) {
+                            group.data = new PointData();
+                            group.first = 0;
                         }
-                        vIndex[vIndex.length] = vertex.length / 2 - 1;
+
+                        // if (!vertexDataAdded) {
+                        //     vertexDataAdded = true;
+
+                        if (!addPoint(group.data.vertex, coordinates, tile, tileSize)) {
+                            // in case of point has not been added because it's not inside tile
+                            // -> we can skip it.
+                            return allReady;
+                        }
+                        group.last = group.data.vertex.length;
+                        // }
+                        // vIndex[vIndex.length] = vertex.length / 2 - 1;
                     }
                 }
             } else {
                 if (geomType == 'LineString') {
                     if (type == 'Line') {
-                        // iStart = vStart / 2;
-                        // const vLength = iStart + (coordinates.length - 1) * 6;
-                        let vGroup = vertexGroups.LineString;
-                        let lineCap = strokeLinecap;
-                        let lineJoin = strokeLinejoin;
-
                         if (strokeDasharray) {
                             group.texture = this.dashes.get(strokeDasharray);
-                            // lineCap = 'butt';
-                            lineCap = false;
-                            lineJoin = false;
                         }
 
-                        if (vertexDataAdded === false) {
-                            // number of ls segements
-                            vertexDataAdded = addLineString(vertex, vGroup.normal, vGroup.lengthSoFar, vIndex, coordinates, tile, tileSize, lineCap, lineJoin);
-                        } else {
-                            addIndices(vStart / 2, <number>vertexDataAdded, vIndex, lineCap);
+                        if (!group.data) {
+                            group.first = 0;
+                            group.data = new LineData();
                         }
+                        let vGroup = group.data;
+
+                        addLineString(vGroup.vertex, vGroup.normal, coordinates, tile, tileSize, strokeLinecap, strokeLinejoin, strokeWidth, strokeDasharray && vGroup.lengthSoFar);
+
+                        group.last = vGroup.vertex.length;
                     } else if (type == 'Circle' || type == 'Rect') {
                         vertex = vertexGroups.Point.vertex;
                         vStart = vertex.length;
@@ -461,42 +475,55 @@ class FeatureFactory {
                     }
                 } else {
                     // Polygon geometry
-                    if (type == 'Extrude') {
-                        vertex = vertexGroups.Extrude.vertex;
-                        vStart = vertex.length;
 
-                        if (!extrudeDataAdded) {
-                            extrudeDataAdded = true;
-                            flatPolygon = addExtrude(vertex, vertexGroups.Extrude.normal, vIndex, coordinates, tile, tileSize, extrude);
-                        }
-                    } else if (type == 'Polygon') {
-                        if (!polyDataAdded) {
-                            polyDataAdded = true;
-                            flatPolygon = addPolygon(vertex, coordinates, tile, tileSize);
-                        } else {
-                            // debugger;
-                        }
-                    } else if (type == 'Line') {
+                    if (type == 'Line') {
                         if (strokeDasharray) {
                             group.texture = this.dashes.get(strokeDasharray);
                         }
-                        const vGroup = vertexGroups.LineString;
-                        for (let ls of coordinates) {
-                            addLineString(vGroup.vertex, vGroup.normal, vGroup.lengthSoFar, vIndex, ls, tile, tileSize);
+
+                        if (!group.data) {
+                            group.first = 0;
+                            group.data = new LineData();
                         }
-                        continue;
-                    }
-                    // if (!feature.geometry._xyz) debugger;
 
-                    let triangles = feature.geometry._xyz ||
-                        earcut(flatPolygon.vertices, flatPolygon.holes, flatPolygon.dimensions);
+                        const vGroup = group.data;
+                        // const vGroup = vertexGroups.LineString;
+                        for (let ls of coordinates) {
+                            // addLineString(vGroup.vertex, vGroup.normal, vGroup.lengthSoFar, vIndex, ls, tile, tileSize);
+                            addLineString(vGroup.vertex, vGroup.normal, coordinates, tile, tileSize, strokeLinecap, strokeLinejoin, strokeWidth, strokeDasharray && vGroup.lengthSoFar);
+                        }
+                        group.last = vGroup.vertex.length;
+                    } else {
+                        vIndex = group.index = group.index || [];
 
-                    iStart = vStart / flatPolygon.dimensions;
+                        if (type == 'Extrude') {
+                            vertex = vertexGroups.Extrude.vertex;
+                            vStart = vertex.length;
+
+                            if (!extrudeDataAdded) {
+                                extrudeDataAdded = true;
+                                flatPolygon = addExtrude(vertex, vertexGroups.Extrude.normal, vIndex, coordinates, tile, tileSize, extrude);
+                            }
+                        } else if (type == 'Polygon') {
+                            if (!polyDataAdded) {
+                                polyDataAdded = true;
+                                flatPolygon = addPolygon(vertex, coordinates, tile, tileSize);
+                            } else {
+                                // debugger;
+                            }
+                        }
+                        // if (!feature.geometry._xyz) debugger;
+
+                        let triangles = feature.geometry._xyz ||
+                            earcut(flatPolygon.vertices, flatPolygon.holes, flatPolygon.dimensions);
+
+                        iStart = vStart / flatPolygon.dimensions;
 
 
-                    for (let t = 0; t < triangles.length; t++) {
-                        // vIndex[vIndex.length] = iStart + triangles[t];
-                        vIndex.push(iStart + triangles[t]);
+                        for (let t = 0; t < triangles.length; t++) {
+                            // vIndex[vIndex.length] = iStart + triangles[t];
+                            vIndex.push(iStart + triangles[t]);
+                        }
                     }
                 }
             }

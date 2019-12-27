@@ -1,38 +1,33 @@
 precision lowp float;
 
 attribute vec2 a_position;
-attribute vec2 a_normal;
+attribute vec4 a_normal;
+
+
 attribute float a_lengthSoFar;
 
 uniform mat4 u_matrix;
 uniform highp float u_strokeWidth;
-uniform highp float u_scale;
 uniform highp float u_zIndex;
+uniform highp float u_scale;
 uniform vec2 u_topLeft;
 uniform float u_texWidth;
 varying vec2 v_normal;
-varying vec2 v_width;
+
 varying float v_lengthSoFar;
 
-varying vec3 v_fill;
-
-uniform float u_capScale;
-varying float v_capScale;
+#define N_SCALE 8192.0
+//#define N_SCALE 1.0
 
 void main(void){
 
-    float alias = 1.;
-    if (u_strokeWidth<1.){
-        alias = .65;
-    }
+    float width = u_strokeWidth / u_scale;
 
-    float width = (u_strokeWidth+alias) / u_scale;
+    vec2 normal = a_normal.xy / N_SCALE;
 
-    v_normal = a_normal;
-    v_capScale = 1. / u_capScale;
-    v_width = vec2(u_strokeWidth, alias);
+    v_normal = a_normal.zw / N_SCALE;
 
     v_lengthSoFar = a_lengthSoFar / u_texWidth;
 
-    gl_Position = u_matrix * vec4(u_topLeft + a_position + v_normal * width * u_capScale, u_zIndex, 1.0);
+    gl_Position = u_matrix * vec4(u_topLeft + a_position + normal * width, u_zIndex, 1.0);
 }

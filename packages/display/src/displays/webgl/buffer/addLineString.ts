@@ -17,15 +17,23 @@
  * License-Filename: LICENSE
  */
 
-type Cap = false | 'round' | 'butt' | 'square';
-type Join = false | 'round' | 'bevel' | 'miter';
+type Cap = 'round' | 'butt' | 'square';
+type Join = 'round' | 'bevel' | 'miter' | 'none';
+
+const CAP_SQUARE = 'square';
+const JOIN_MITER = 'miter';
+
+// const SCALE = 1;
+const SCALE = 8192;
 
 const normalize = (p) => {
     let x = p[0];
     let y = p[1];
     let len = x * x + y * y;
     if (len > 0) {
-        len = 127 / Math.sqrt(len);
+        len = 1 / Math.sqrt(len);
+        // len = 127 / Math.sqrt(len);
+        // len = SCALE / Math.sqrt(len);
         // len = 32767 / Math.sqrt(len);
         p[0] = x * len;
         p[1] = y * len;
@@ -33,142 +41,408 @@ const normalize = (p) => {
     return p;
 };
 
-const addIndices = (iStart: number, segments: number, vIndex: number[], cap?: boolean|Cap) => {
-    // cap = cap && cap != 'square';
 
-    let sLength = 6; // 4 + 2 * Number(cap);
-    for (let c = iStart, len = iStart + (segments - 1) * sLength; c <= len; c += sLength) {
-        vIndex.push(
-            c + 1, c + 2, c,
-            c + 3, c + 2, c + 1
+const addCap = (cap: Cap, x: number, y: number, nx: number, ny: number, vertex: number[], normal: number[]) => {
+    if (cap == 'round') {
+        vertex.push(
+            x, y,
+            x, y,
+            x, y
         );
 
-        if (cap == 'round') {
-            vIndex.push(
-                c + 1, c, c + 4,
-                c + 3, c + 5, c + 2
-            );
-        } else if (cap) {
-            if (c > iStart) {
-                // vIndex.push(c + 1, c, c + 4);
+        nx *= Math.SQRT2;
+        ny *= Math.SQRT2;
 
+        normal.push(
+            -nx, ny, -nx, ny, // p1.1
+            nx, -ny, nx, -ny, // p1.2
+            ny, nx, ny, nx // p1.0
+        );
+    } else if (cap == CAP_SQUARE) {
+        // -----------
+        // | \       |
+        // |   \     |
+        // |     \   |
+        // |       \ |
+        // -----------
+        vertex.push(
+            x, y,
+            x, y,
+            x, y,
 
-                vIndex.push(c + 1, c, c + 4);
+            x, y,
+            x, y,
+            x, y
+        );
 
+        let sqNx = ny - nx;
+        let sqNy = nx + ny;
 
-                // vIndex.push(
-                //     c + 3, c + 5, c + 2
-                // );
-            }
-        }
+        normal.push(
+            -nx, ny, 0, 0, // p1.2
+            sqNy, -sqNx, 0, 0, // p1.0
+            nx, -ny, 0, 0, // p1.1
+
+            sqNx, sqNy, nx, ny, // p1.0
+            sqNy, -sqNx, nx, ny, // p1.0
+            -nx, ny, 0, 0, // p1.2
+        );
     }
 };
 
-const addLineString = (vertex, normal, lengthSoFar: number[], vIndex, coordinates, tile, tileSize: number, cap?: Cap, join?: Join) => {
-    let totalLength = 0;
-    let segments = 0;
-    let iStart = vertex.length / 2;
+
+const addLineString = (vertex: number[], normal: number[], coordinates: [number, number, number?][], tile, tileSize: number, cap: Cap, join: Join, strokeWidth?: number, lengthSoFar?: number[]) => {
+    // console.time('LSV');
     const vLength = coordinates.length;
     let x1 = tile.lon2x(coordinates[0][0], tileSize);
     let y1 = tile.lat2y(coordinates[0][1], tileSize);
+    let totalLength = 0;
+    let segments = 0;
+    let prevNUp;
+    let prevNDown;
+    let length;
+    let curJoin;
     let x2;
     let y2;
     let dx;
     let dy;
-    let len;
     let nx;
     let ny;
-    let length;
 
-    const addCap = cap && cap != 'square';
+    if (lengthSoFar) {
+        cap = 'butt';
+        join = 'none';
+    }
+
+    let x3;
+    let y3;
+    let ex;
+    let ey;
+    let prevEx;
+    let prevEy;
+    let prevP2Up;
+    let prevP2Down;
+
+    let nUp;
+    let p1Up;
+    let p2Up;
+    let nDown;
+    let p1Down;
+    let p2Down;
+
+    let prevBisectorExceeds;
+    let prevBisectorLength = 0;
+    let prevLeft;
+    let prevJoin;
+
+    let skipped = 0;
 
     for (let c = 1; c < vLength; c++) {
-        x2 = tile.lon2x(coordinates[c][0], tileSize);
-        y2 = tile.lat2y(coordinates[c][1], tileSize);
-
+        x2 = x3 || tile.lon2x(coordinates[c][0], tileSize);
+        y2 = y3 || tile.lat2y(coordinates[c][1], tileSize);
         dx = x1 - x2;
         dy = y1 - y2;
 
         if (!dx && !dy) {
+            skipped++;
             continue;
         }
 
-        // simple for now :o)
-        //          p1.1                        p2.1
-        //         / *---------------------------* \
-        //       /   |                           |   \
-        //     /     |                           |     \
-        // p1.0 --- p1 ------------------------- p2 --- p2.0
-        //     \     |                           |     /
-        //       \   |                           |   /
-        //         \ *---------------------------* /
-        //          p1.2                        p2.2
 
-        // add vertex data
-        vertex.push(
-            x1, y1,
-            x1, y1,
-            x2, y2,
-            x2, y2
-            // ,x1, y1,
-            // x2, y2
-        );
+        let last = c == vLength - 1;
+        let first = c == 1 + skipped;
 
-
-        len = Math.sqrt(dx * dx + dy * dy);
+        curJoin = join;
+        length = Math.sqrt(dx * dx + dy * dy);
+        // length so far including current segment
+        length += totalLength;
 
         if (lengthSoFar) {
-            length = totalLength + len;
             lengthSoFar.push(
-                totalLength, totalLength, length, length
-                // , totalLength, length
+                totalLength, length, totalLength,
+                length, length, totalLength
             );
         }
 
-        len = 127 / len; // 8bit -127...+127
+
+        //          p1.1                        p2.1
+        //         / *---------------------------* \
+        //       /   ^             ^             |   \
+        //      /    |n1           |n            |     \
+        //     /     |             |             |      \
+        // p1.0 --- p1 ------------------------- p2 --- p2.0
+        //     \     |                           |     /
+        //      \    |n2                         |    /
+        //       \   v                           |   /
+        //         \ *---------------------------* /
+        //          p1.2                        p2.2
 
 
-        nx = dx * len;
-        ny = dy * len;
+        let n = normalize([dx, dy]);
+        // let n = normalize2([], [dx, dy]);
+        nx = n[1];
+        ny = n[0];
 
-        // vec12 = normalize([dx, dy]);
+
+        let left;
+        let nextDx = null;
+        let nextDy = null;
+        let nextNormal = null;
+        let nextNx = null;
+        let nextNy = null;
+        let next = null;
+        let nextNUp;
+        let nextNDown;
+
+        let bisectorExceeds = false;
+        let bisectorLength;
+
+        if (!last) {
+            x3 = tile.lon2x(coordinates[c + 1][0], tileSize);
+            y3 = tile.lat2y(coordinates[c + 1][1], tileSize);
+
+            nextDx = x2 - x3;
+            nextDy = y2 - y3;
+            next = [nextDx, nextDy];
+            nextNormal = normalize(next.slice());
+            // nextNormal = normalize2([], next);
+            nextNx = nextNormal[1];
+            nextNy = nextNormal[0];
+            nextNUp = [-nextNx * SCALE, nextNy * SCALE];
+            nextNDown = [-nextNUp[0], -nextNUp[1]];
+
+            ex = nextNx + nx;
+            ey = -nextNy - ny;
+
+            left = dx * nextDy - dy * nextDx < 0;
+            // left = -nx * nextDx + ny * nextDy <0;
+        }
+        const bisector = [ex, ey];
+        // dot product
+        bisectorLength = 1 / (bisector[0] * nx - bisector[1] * ny);
+
+        // if angle is to sharp and bisector length goes to infinity we cut the cone
+        // bisectorLength > 10 behaves exactly like canvas2d..
+        // ..but we cut earlier to prevent "cone explosion"
+        if (join == JOIN_MITER) {
+            if (bisectorLength > 5) {
+                curJoin = 'bevel';
+            }
+            if (prevBisectorLength > 5) {
+                prevJoin = 'bevel';
+            }
+        }
+
+        ex = bisector[0] * bisectorLength;
+        ey = bisector[1] * bisectorLength;
+
+        // >2 -> >90deg
+        let b = Math.sqrt(ex * ex + ey * ey) / 3;
+        bisectorExceeds = b > 1;
+
+        if (bisectorExceeds) {
+            ex /= b;
+            ey /= b;
+        }
+
+        nx *= SCALE;
+        ny *= SCALE;
+        ex *= SCALE;
+        ey *= SCALE;
+
+        nUp = [-nx, ny];
+        nDown = [nx, -ny];
+
+        p1Down = nDown;
+        p2Down = nDown;
+        p1Up = nUp;
+        p2Up = nUp;
+
+        if (!last && curJoin == JOIN_MITER) {
+            if (left) {
+                p2Up = [-ex, -ey];
+                p2Down = [ex, ey];
+            } else {
+                p2Up = [-ex, -ey];
+                p2Down = [ex, ey];
+            }
+        }
+        if (prevJoin == JOIN_MITER) {
+            p1Up = [-prevEx, -prevEy];
+            p1Down = [prevEx, prevEy];
+        }
+
+        if (join != JOIN_MITER && join != 'none') {
+            if (!first) {
+                p1Down = prevLeft ? nDown : [prevEx, prevEy];
+                p1Up = prevLeft ? [-prevEx, -prevEy] : nUp;
+            }
+
+            if (!last) {
+                if (left) {
+                    p2Up = [-ex, -ey];
+                } else {
+                    p2Down = [ex, ey];
+                }
+            }
+        }
+
+        if (bisectorExceeds) {
+            if (!last) {
+                if (left) {
+                    p2Up = nextNDown;
+                } else {
+                    p2Down = nextNUp;
+                }
+            } else {
+                if (prevLeft) {
+                    p1Up = prevNDown;
+                } else {
+                    p1Down = prevNUp;
+                }
+            }
+        }
+
+        if (!last) {
+            if (prevBisectorExceeds) {
+                if (prevLeft) {
+                    p1Up = prevNDown;
+                } else {
+                    p1Down = prevNUp;
+                }
+            }
+        }
 
         normal.push(
-            ny, -nx, // p1.1
-            -ny, nx, // p1.2
-            ny, -nx, // p2.1
-            -ny, nx // p2.2
+            // 1down -> 2down -> 1up
+            //
+            // 1
+            // | >.
+            // 1  2
+            p1Down[0], p1Down[1], nDown[0], nDown[1],
+            p2Down[0], p2Down[1], nDown[0], nDown[1],
+            p1Up[0], p1Up[1], nUp[0], nUp[1],
+
+            // 2down -> 2up -> 1up
+            //
+            // 1  2
+            // °< |
+            //    2
+            p2Down[0], p2Down[1], nDown[0], nDown[1],
+            p2Up[0], p2Up[1], nUp[0], nUp[1],
+            p1Up[0], p1Up[1], nUp[0], nUp[1]
         );
-
-
-        // if (c == vLength - 1) { // first/last segment
-        //     console.log(c);
-        // }
-
-        // if (addCap ||
-        //     c != vLength - 1 // middle segment (!first&&!last)
-        // ) {
+        // add vertex data
         vertex.push(
             x1, y1,
-            x2, y2
+            x2, y2,
+            x1, y1,
+            x2, y2,
+            x2, y2,
+            x1, y1
         );
-        normal.push(
-            nx, ny, // p1.0
-            -nx, -ny // p2.0
-        );
-        lengthSoFar.push(totalLength, length);
-        // }
+
+
+        if (!first && join != 'none') {
+            if (!prevBisectorExceeds && join != JOIN_MITER) {
+                let ne = normalize([ex, ey]);
+                ne[0] *= SCALE;
+                ne[1] *= SCALE;
+                // 1---3
+                //  \ /
+                //   2
+                if (prevLeft) {
+                    if (join == 'bevel') {
+                        // allow antialias for bevel join
+                        normal.push(
+                            prevNDown[0], prevNDown[1], ne[0], ne[1],
+                            p1Up[0], p1Up[1], -ne[0], -ne[1],
+                            p1Down[0], p1Down[1], ne[0], ne[1]
+                        );
+                    } else {
+                        normal.push(
+                            prevNDown[0], prevNDown[1], prevNDown[0], prevNDown[1],
+                            p1Up[0], p1Up[1], -ne[0], -ne[1],
+                            p1Down[0], p1Down[1], p1Down[0], p1Down[1]
+                        );
+                    }
+                } else {
+                    if (join == 'bevel') {
+                        // allow antialias for bevel join
+                        normal.push(
+                            prevNUp[0], prevNUp[1], -ne[0], -ne[1],
+                            p1Down[0], p1Down[1], ne[0], ne[1],
+                            p1Up[0], p1Up[1], -ne[0], -ne[1],
+                        );
+                    } else {
+                        normal.push(
+                            prevNUp[0], prevNUp[1], prevNUp[0], prevNUp[1],
+                            p1Down[0], p1Down[1], ne[0], ne[1],
+                            p1Up[0], p1Up[1], nUp[0], nUp[1],
+                        );
+                    }
+                }
+                vertex.push(
+                    x1, y1,
+                    x1, y1,
+                    x1, y1
+                );
+            }
+
+            if (join == 'round') {
+                // Cone
+                //   3
+                //  / \
+                // 1---2
+                if (prevLeft) {
+                    normal.push(
+                        prevNDown[0], prevNDown[1], prevNDown[0], prevNDown[1],
+                        p1Down[0], p1Down[1], p1Down[0], p1Down[1],
+                        prevEx, prevEy, prevEx, prevEy
+                    );
+                } else {
+                    normal.push(
+                        prevNUp[0], prevNUp[1], prevNUp[0], prevNUp[1],
+                        p1Up[0], p1Up[1], nUp[0], nUp[1],
+                        -prevEx, -prevEy, -prevEx, -prevEy
+                    );
+                }
+                vertex.push(
+                    x1, y1,
+                    x1, y1,
+                    x1, y1
+                );
+            }
+        }
+
+        if (first) {
+            addCap(cap, x1, y1, nx, ny, vertex, normal);
+        }
+
+        if (last) {
+            addCap(cap, x2, y2, -nx, -ny, vertex, normal);
+        }
+
+        prevNUp = nUp;
+        prevNDown = nDown;
+        prevP2Up = p2Up;
+        prevP2Down = p2Down;
+
+        prevEx = ex;
+        prevEy = ey;
 
         x1 = x2;
         y1 = y2;
 
-        segments++;
-        totalLength += length;
+        prevLeft = left;
+        prevBisectorExceeds = bisectorExceeds;
+        prevBisectorLength = bisectorLength;
+        prevJoin = curJoin;
+        totalLength = length;
     }
-
-    addIndices(iStart, segments, vIndex, cap);
+    // console.timeEnd('LSV');
 
     return segments;
 };
 
-export {addLineString, addIndices, normalize};
+export {addLineString, normalize};

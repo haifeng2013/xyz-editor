@@ -1,34 +1,26 @@
 precision lowp float;
 
+uniform sampler2D u_pattern;
+
 uniform vec4 u_fill;
-uniform highp float u_scale;
+uniform highp float u_strokeWidth;
 
 varying vec2 v_normal;
 varying vec2 v_width;
 
 varying float v_lengthSoFar;
 varying vec2 texCoord;
-uniform sampler2D u_pattern;
 
-varying vec3 v_fill;
-varying float v_capScale;
 
 void main(void){
 
     float nLength = length(v_normal);
-
-    if(nLength>v_capScale)discard;
-
-    nLength /= v_capScale;
-
-    float l_pixel = nLength * (v_width.s + v_width.t * 0.5);
-    float alias = l_pixel - (v_width.s - v_width.t * 0.5);
-    float alpha = 1.0 - alias / v_width.t;
+    float alpha = clamp(u_strokeWidth - nLength * u_strokeWidth, .0, 1.);
 
     gl_FragColor = u_fill;
+    gl_FragColor.a *= alpha;
 
     if (alpha < 1.0){
-        gl_FragColor.a *= alpha;
+//        gl_FragColor = vec4(.0, .0, 1., 1.);
     }
 }
-
