@@ -146,8 +146,8 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
         dy = y1 - y2;
 
         if (!dx && !dy) {
-            x2 = null;
             x3 = null;
+            y3 = null;
             continue;
         }
 
@@ -235,8 +235,6 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
                 prevJoin = JOIN_BEVEL;
             }
         }
-
-        // if(c==2)debugger;
 
         ex = bisector[0] * bisectorLength;
         ey = bisector[1] * bisectorLength;
