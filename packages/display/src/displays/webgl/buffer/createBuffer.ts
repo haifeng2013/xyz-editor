@@ -96,13 +96,13 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
             size: 2,
             stride: 0// 3*2
         },
-        'LineString': {
-            vertex: [],
-            normal: [],
-            lengthSoFar: [],
-            size: 2,
-            type: Float32Array
-        },
+        // 'Line': {
+        //     vertex: [],
+        //     normal: [],
+        //     lengthSoFar: [],
+        //     size: 2,
+        //     type: Float32Array
+        // },
         'Extrude': {
             normal: [],
             vertex: [],
@@ -250,15 +250,14 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
                         strokeWidth = shared.strokeWidth;
                         geoBuffer = geomBuffers[type];
 
+                        vertexType = type; // == 'Line' ? 'LineString' : type;
+                        // : (type == 'Polygon' || type == 'Extrude' || type == 'Text')
+                        //     ? type
+                        //     // : 'Point';
+                        //     : type == 'Image'
+                        //         ? 'Icon'
+                        //         : 'Point';
 
-                        vertexType = type == 'Line'
-                            ? 'LineString'
-                            : (type == 'Polygon' || type == 'Extrude' || type == 'Text')
-                                ? type
-                                // : 'Point';
-                                : type == 'Image'
-                                    ? 'Icon'
-                                    : 'Point';
 
                         vertexGroup = grp.data || vertexGroups[vertexType];
 
@@ -409,7 +408,7 @@ const createBuffer = (data: any[], renderLayer: Layer, tileSize: number, tile, f
                                         size: 3
                                     });
                                 }
-                            } else if (type == 'Image') {
+                            } else if (type == 'Icon') {
                                 geoGroup.texture = grp.texture;
 
                                 // geoGroup.alpha = true;

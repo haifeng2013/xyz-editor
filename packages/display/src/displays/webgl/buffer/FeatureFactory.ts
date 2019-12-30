@@ -150,11 +150,9 @@ class FeatureFactory {
         let allReady = true;
 
         if (!vertex) {
-            return true;
+            if (geomType != 'LineString') console.warn('NO VERTEXGROUPS:', geomType);
+            // return true;
         }
-
-        vertex = vertex.vertex;
-        vStart = vertex.length;
 
         for (let i = 0, iLen = styleGroups.length; i < iLen; i++) {
             style = styleGroups[i];
@@ -170,6 +168,10 @@ class FeatureFactory {
             }
 
             type = getValue('type', style, feature, level);
+
+            if (type == 'Image') {
+                type = 'Icon';
+            }
 
             // // posId = (x/4)<<16 | (y/4);
             // // if(pmap[posId]){
@@ -196,7 +198,7 @@ class FeatureFactory {
             text = UNDEF;
             strokeScale = strokeWidthScale;
 
-            if (type == 'Image') {
+            if (type == 'Icon') {
                 offsetX = getValue('offsetX', style, feature, level) ^ 0;
                 offsetY = getValue('offsetY', style, feature, level) ^ 0;
 
@@ -340,8 +342,6 @@ class FeatureFactory {
 
             vIndex = group.index;
 
-            // if(type == 'Image')debugger;
-
             if (geomType == 'Point') {
                 if (type == 'Text') {
                     let glyphs = group.glyphs;
@@ -377,7 +377,7 @@ class FeatureFactory {
 
                     group.last = vertex.length;
                 } else {
-                    if (type == 'Image') {
+                    if (type == 'Icon') {
                         let src = getValue('src', style, feature, level);
                         let width = getValue('width', style, feature, level);
                         let height = getValue('height', style, feature, level) || width;
@@ -505,6 +505,9 @@ class FeatureFactory {
                                 flatPolygon = addExtrude(vertex, vertexGroups.Extrude.normal, vIndex, coordinates, tile, tileSize, extrude);
                             }
                         } else if (type == 'Polygon') {
+                            vertex = vertex.vertex;
+                            vStart = vertex.length;
+
                             if (!polyDataAdded) {
                                 polyDataAdded = true;
                                 flatPolygon = addPolygon(vertex, coordinates, tile, tileSize);
@@ -512,7 +515,6 @@ class FeatureFactory {
                                 // debugger;
                             }
                         }
-                        // if (!feature.geometry._xyz) debugger;
 
                         let triangles = feature.geometry._xyz ||
                             earcut(flatPolygon.vertices, flatPolygon.holes, flatPolygon.dimensions);

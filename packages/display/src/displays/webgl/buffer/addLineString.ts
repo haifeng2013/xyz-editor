@@ -116,8 +116,8 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
         join = 'none';
     }
 
-    let x3;
-    let y3;
+    let x3 = null;
+    let y3 = null;
     let ex;
     let ey;
     let prevEx;
@@ -137,23 +137,24 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
     let prevLeft;
     let prevJoin;
 
-    let skipped = 0;
+    let first = null;
 
     for (let c = 1; c < vLength; c++) {
-        x2 = x3 || tile.lon2x(coordinates[c][0], tileSize);
-        y2 = y3 || tile.lat2y(coordinates[c][1], tileSize);
+        x2 = x3 == null ? tile.lon2x(coordinates[c][0], tileSize) : x3;
+        y2 = y3 == null ? tile.lat2y(coordinates[c][1], tileSize) : y3;
         dx = x1 - x2;
         dy = y1 - y2;
 
         if (!dx && !dy) {
-            skipped++;
+            x2 = null;
+            x3 = null;
             continue;
         }
 
 
         let last = c == vLength - 1;
-        let first = c == 1 + skipped;
 
+        first = first == null ? true : false;
         curJoin = join;
         length = Math.sqrt(dx * dx + dy * dy);
         // length so far including current segment
