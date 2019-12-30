@@ -22,9 +22,11 @@ type Join = 'round' | 'bevel' | 'miter' | 'none';
 
 const CAP_SQUARE = 'square';
 const JOIN_MITER = 'miter';
+const JOIN_BEVEL = 'bevel';
 
 // const SCALE = 1;
 const SCALE = 8192;
+
 
 const normalize = (p) => {
     let x = p[0];
@@ -225,19 +227,21 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
         // bisectorLength > 10 behaves exactly like canvas2d..
         // ..but we cut earlier to prevent "cone explosion"
         if (join == JOIN_MITER) {
-            if (bisectorLength > 5) {
-                curJoin = 'bevel';
+            if (bisectorLength > 2) {
+                curJoin = JOIN_BEVEL;
             }
-            if (prevBisectorLength > 5) {
-                prevJoin = 'bevel';
+            if (prevBisectorLength > 2) {
+                prevJoin = JOIN_BEVEL;
             }
         }
+
+        // if(c==2)debugger;
 
         ex = bisector[0] * bisectorLength;
         ey = bisector[1] * bisectorLength;
 
         // >2 -> >90deg
-        let b = Math.sqrt(ex * ex + ey * ey) / 3;
+        let b = Math.sqrt(ex * ex + ey * ey) / 2;
         bisectorExceeds = b > 1;
 
         if (bisectorExceeds) {
@@ -258,57 +262,41 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
         p1Up = nUp;
         p2Up = nUp;
 
-        if (!last && curJoin == JOIN_MITER) {
-            if (left) {
-                p2Up = [-ex, -ey];
-                p2Down = [ex, ey];
-            } else {
-                p2Up = [-ex, -ey];
-                p2Down = [ex, ey];
-            }
-        }
-        if (prevJoin == JOIN_MITER) {
-            p1Up = [-prevEx, -prevEy];
-            p1Down = [prevEx, prevEy];
-        }
-
-        if (join != JOIN_MITER && join != 'none') {
-            if (!first) {
-                p1Down = prevLeft ? nDown : [prevEx, prevEy];
-                p1Up = prevLeft ? [-prevEx, -prevEy] : nUp;
-            }
-
-            if (!last) {
+        if (join != 'none') {
+            if (!last && curJoin == JOIN_MITER) {
                 if (left) {
                     p2Up = [-ex, -ey];
+                    p2Down = [ex, ey];
                 } else {
+                    p2Up = [-ex, -ey];
                     p2Down = [ex, ey];
                 }
             }
-        }
 
-        if (bisectorExceeds) {
-            if (!last) {
-                if (left) {
-                    p2Up = nextNDown;
+            if (!first && !prevBisectorExceeds) {
+                if (!prevLeft) {
+                    p1Down = [prevEx, prevEy];
+                    if (join == 'miter') {
+                        p1Up = [-prevEx, -prevEy]; // miter
+                    }
                 } else {
-                    p2Down = nextNUp;
-                }
-            } else {
-                if (prevLeft) {
-                    p1Up = prevNDown;
-                } else {
-                    p1Down = prevNUp;
+                    p1Up = [-prevEx, -prevEy];
+                    if (join == 'miter') {
+                        p1Down = [prevEx, prevEy]; // miter
+                    }
                 }
             }
-        }
 
-        if (!last) {
-            if (prevBisectorExceeds) {
-                if (prevLeft) {
-                    p1Up = prevNDown;
-                } else {
-                    p1Down = prevNUp;
+
+            if (!bisectorExceeds) {
+                if (join != JOIN_MITER) {
+                    if (!last) {
+                        if (left) {
+                            p2Up = [-ex, -ey];
+                        } else {
+                            p2Down = [ex, ey];
+                        }
+                    }
                 }
             }
         }
@@ -344,51 +332,6 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
 
 
         if (!first && join != 'none') {
-            if (!prevBisectorExceeds && join != JOIN_MITER) {
-                let ne = normalize([ex, ey]);
-                ne[0] *= SCALE;
-                ne[1] *= SCALE;
-                // 1---3
-                //  \ /
-                //   2
-                if (prevLeft) {
-                    if (join == 'bevel') {
-                        // allow antialias for bevel join
-                        normal.push(
-                            prevNDown[0], prevNDown[1], ne[0], ne[1],
-                            p1Up[0], p1Up[1], -ne[0], -ne[1],
-                            p1Down[0], p1Down[1], ne[0], ne[1]
-                        );
-                    } else {
-                        normal.push(
-                            prevNDown[0], prevNDown[1], prevNDown[0], prevNDown[1],
-                            p1Up[0], p1Up[1], -ne[0], -ne[1],
-                            p1Down[0], p1Down[1], p1Down[0], p1Down[1]
-                        );
-                    }
-                } else {
-                    if (join == 'bevel') {
-                        // allow antialias for bevel join
-                        normal.push(
-                            prevNUp[0], prevNUp[1], -ne[0], -ne[1],
-                            p1Down[0], p1Down[1], ne[0], ne[1],
-                            p1Up[0], p1Up[1], -ne[0], -ne[1],
-                        );
-                    } else {
-                        normal.push(
-                            prevNUp[0], prevNUp[1], prevNUp[0], prevNUp[1],
-                            p1Down[0], p1Down[1], ne[0], ne[1],
-                            p1Up[0], p1Up[1], nUp[0], nUp[1],
-                        );
-                    }
-                }
-                vertex.push(
-                    x1, y1,
-                    x1, y1,
-                    x1, y1
-                );
-            }
-
             if (join == 'round') {
                 // Cone
                 //   3
@@ -412,6 +355,81 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
                     x1, y1,
                     x1, y1
                 );
+            }
+
+
+            if (!prevBisectorExceeds) {
+                if (join != JOIN_MITER) {
+                    let an = normalize([ex, ey]); // alias normal
+                    an[0] *= SCALE;
+                    an[1] *= SCALE;
+                    // 1---3
+                    //  \ /
+                    //   2
+                    if (prevLeft) {
+                        if (join == JOIN_BEVEL) {
+                            // allow antialias for bevel join
+                            normal.push(
+                                prevNDown[0], prevNDown[1], an[0], an[1],
+                                p1Up[0], p1Up[1], -an[0], -an[1],
+                                p1Down[0], p1Down[1], an[0], an[1]
+                            );
+                        } else {
+                            normal.push(
+                                prevNDown[0], prevNDown[1], prevNDown[0], prevNDown[1],
+                                p1Up[0], p1Up[1], -an[0], -an[1],
+                                p1Down[0], p1Down[1], p1Down[0], p1Down[1]
+                            );
+                        }
+                    } else {
+                        if (join == JOIN_BEVEL) {
+                            // allow antialias for bevel join
+                            normal.push(
+                                prevNUp[0], prevNUp[1], -an[0], -an[1],
+                                p1Down[0], p1Down[1], an[0], an[1],
+                                p1Up[0], p1Up[1], -an[0], -an[1],
+                            );
+                        } else {
+                            normal.push(
+                                prevNUp[0], prevNUp[1], prevNUp[0], prevNUp[1],
+                                p1Down[0], p1Down[1], an[0], an[1],
+                                p1Up[0], p1Up[1], nUp[0], nUp[1],
+                            );
+                        }
+                    }
+                    vertex.push(
+                        x1, y1,
+                        x1, y1,
+                        x1, y1
+                    );
+                }
+            } else {
+                if (!first) {
+                    // alias normal: no alias for round joins
+                    let anX = 0;
+                    let anY = 0;
+                    if (join != 'round') {
+                        let an = normalize([ex, ey]);
+                        anX = an[0] * SCALE;
+                        anY = an[1] * SCALE;
+                    }
+                    vertex.push(x1, y1, x1, y1, x1, y1);
+
+                    if (prevLeft) {
+                        normal.push(
+                            0, 0, 0, 0,
+                            prevNDown[0], prevNDown[1], anX, anY,
+                            nDown[0], nDown[1], anX, anY
+                        );
+                    } else {
+                        normal.push(
+                            0, 0, 0, 0,
+                            prevNUp[0], prevNUp[1], anX, anY,
+                            nUp[0], nUp[1], anX, anY
+                        );
+                    }
+                }
+                //
             }
         }
 
