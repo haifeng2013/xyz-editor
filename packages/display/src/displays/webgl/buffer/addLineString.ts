@@ -186,7 +186,6 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
         nx = n[1];
         ny = n[0];
 
-
         let left;
         let nextDx = null;
         let nextDy = null;
@@ -359,7 +358,7 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
 
             if (!prevBisectorExceeds) {
                 if (join != JOIN_MITER) {
-                    let an = normalize([ex, ey]); // alias normal
+                    let an = normalize([prevEx, prevEy]); // alias normal
                     an[0] *= SCALE;
                     an[1] *= SCALE;
                     // 1---3
@@ -392,10 +391,11 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
                             normal.push(
                                 prevNUp[0], prevNUp[1], prevNUp[0], prevNUp[1],
                                 p1Down[0], p1Down[1], an[0], an[1],
-                                p1Up[0], p1Up[1], nUp[0], nUp[1],
+                                p1Up[0], p1Up[1], p1Up[0], p1Up[1],
                             );
                         }
                     }
+
                     vertex.push(
                         x1, y1,
                         x1, y1,
