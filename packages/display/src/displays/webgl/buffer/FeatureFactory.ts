@@ -488,7 +488,7 @@ class FeatureFactory {
                         // const vGroup = vertexGroups.LineString;
                         for (let ls of coordinates) {
                             // addLineString(vGroup.vertex, vGroup.normal, vGroup.lengthSoFar, vIndex, ls, tile, tileSize);
-                            addLineString(vGroup.vertex, vGroup.normal, coordinates, tile, tileSize, strokeLinecap, strokeLinejoin, strokeWidth, strokeDasharray && vGroup.lengthSoFar);
+                            addLineString(vGroup.vertex, vGroup.normal, ls, tile, tileSize, strokeLinecap, strokeLinejoin, strokeWidth, strokeDasharray && vGroup.lengthSoFar);
                         }
                         group.last = vGroup.vertex.length;
                     } else {
