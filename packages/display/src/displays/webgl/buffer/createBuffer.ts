@@ -29,7 +29,7 @@ import {FeatureFactory} from './FeatureFactory';
 const tileUtils = tile.Utils;
 
 // const DEFAULT_STROKE_WIDTH_ZOOM_SCALE = () => 1;
-const PROCESS_FEATURE_BUNDLE_SIZE = 24;
+const PROCESS_FEATURE_BUNDLE_SIZE = 16;
 const EXCLUSIVE_TIME_MS = 4;
 const PRIORITY = 4;
 

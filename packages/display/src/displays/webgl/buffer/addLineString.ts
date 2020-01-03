@@ -27,7 +27,6 @@ const JOIN_BEVEL = 'bevel';
 // const SCALE = 1;
 const SCALE = 8192;
 
-
 const normalize = (p) => {
     let x = p[0];
     let y = p[1];
@@ -46,11 +45,7 @@ const normalize = (p) => {
 
 const addCap = (cap: Cap, x: number, y: number, nx: number, ny: number, vertex: number[], normal: number[]) => {
     if (cap == 'round') {
-        vertex.push(
-            x, y,
-            x, y,
-            x, y
-        );
+        vertex.push(x, y, x, y, x, y);
 
         nx *= Math.SQRT2;
         ny *= Math.SQRT2;
@@ -67,15 +62,7 @@ const addCap = (cap: Cap, x: number, y: number, nx: number, ny: number, vertex: 
         // |     \   |
         // |       \ |
         // -----------
-        vertex.push(
-            x, y,
-            x, y,
-            x, y,
-
-            x, y,
-            x, y,
-            x, y
-        );
+        vertex.push(x, y, x, y, x, y, x, y, x, y, x, y);
 
         let sqNx = ny - nx;
         let sqNy = nx + ny;
@@ -93,8 +80,11 @@ const addCap = (cap: Cap, x: number, y: number, nx: number, ny: number, vertex: 
 };
 
 
-const addLineString = (vertex: number[], normal: number[], coordinates: [number, number, number?][], tile, tileSize: number, cap: Cap, join: Join, strokeWidth?: number, lengthSoFar?: number[]) => {
+const addLineString = (vertex: number[], normal: number[], coordinates: [number, number, number?][], tile, tileSize: number, cap: Cap, join: Join, strokeWidth: number, lengthSoFar?: number[]) => {
     // console.time('LSV');
+    // console.log('----');
+    strokeWidth *= .5;
+
     const vLength = coordinates.length;
     let x1 = tile.lon2x(coordinates[0][0], tileSize);
     let y1 = tile.lat2y(coordinates[0][1], tileSize);
@@ -110,40 +100,75 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
     let dy;
     let nx;
     let ny;
-
-    if (lengthSoFar) {
-        cap = 'butt';
-        join = 'none';
-    }
-
     let x3 = null;
     let y3 = null;
     let ex;
     let ey;
     let prevEx;
     let prevEy;
-    let prevP2Up;
-    let prevP2Down;
-
     let nUp;
     let p1Up;
     let p2Up;
     let nDown;
     let p1Down;
     let p2Down;
-
     let prevBisectorExceeds;
     let prevBisectorLength = 0;
     let prevLeft;
-    let prevJoin;
-
+    let nextDx = null;
+    let nextDy = null;
+    let nextNx = null;
+    let nextNy = null;
     let first = null;
+    let prevX2 = null;
+    let prevY2 = null;
+    let prevJoin;
+    let n;
+
+    if (lengthSoFar) {
+        cap = 'butt';
+        join = 'none';
+    }
+
 
     for (let c = 1; c < vLength; c++) {
         x2 = x3 == null ? tile.lon2x(coordinates[c][0], tileSize) : x3;
         y2 = y3 == null ? tile.lat2y(coordinates[c][1], tileSize) : y3;
-        dx = x1 - x2;
-        dy = y1 - y2;
+
+        let last = c == vLength - 1;
+        let left;
+        let nextNormal = null;
+        let next = null;
+        let bisectorExceeds = false;
+        let bisectorLength;
+
+        curJoin = join;
+
+        if (!last || first == null) {
+            dx = x1 - x2;
+            dy = y1 - y2;
+
+            n = normalize([dx, dy]);
+            nx = n[1];
+            ny = n[0];
+        } else {
+            dx = nextDx;
+            dy = nextDy;
+            prevBisectorLength = 0;
+
+            x2 = x1;
+            y2 = y1;
+
+            x1 = x3;
+            y1 = y3;
+            nx = -nextNx;
+            ny = -nextNy;
+            ex = -prevEx;
+            ey = -prevEy;
+            left = !prevLeft;
+            bisectorExceeds = prevBisectorExceeds;
+            curJoin = prevJoin;
+        }
 
         if (!dx && !dy) {
             x3 = null;
@@ -151,22 +176,11 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
             continue;
         }
 
+        first = first == null;
 
-        let last = c == vLength - 1;
+        let isEnd = last || first;
 
-        first = first == null ? true : false;
-        curJoin = join;
         length = Math.sqrt(dx * dx + dy * dy);
-        // length so far including current segment
-        length += totalLength;
-
-        if (lengthSoFar) {
-            lengthSoFar.push(
-                totalLength, length, totalLength,
-                length, length, totalLength
-            );
-        }
-
 
         //          p1.1                        p2.1
         //         / *---------------------------* \
@@ -180,25 +194,6 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
         //         \ *---------------------------* /
         //          p1.2                        p2.2
 
-
-        let n = normalize([dx, dy]);
-        // let n = normalize2([], [dx, dy]);
-        nx = n[1];
-        ny = n[0];
-
-        let left;
-        let nextDx = null;
-        let nextDy = null;
-        let nextNormal = null;
-        let nextNx = null;
-        let nextNy = null;
-        let next = null;
-        let nextNUp;
-        let nextNDown;
-
-        let bisectorExceeds = false;
-        let bisectorLength;
-
         if (!last) {
             x3 = tile.lon2x(coordinates[c + 1][0], tileSize);
             y3 = tile.lat2y(coordinates[c + 1][1], tileSize);
@@ -210,47 +205,51 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
             // nextNormal = normalize2([], next);
             nextNx = nextNormal[1];
             nextNy = nextNormal[0];
-            nextNUp = [-nextNx * SCALE, nextNy * SCALE];
-            nextNDown = [-nextNUp[0], -nextNUp[1]];
 
             ex = nextNx + nx;
             ey = -nextNy - ny;
 
             left = dx * nextDy - dy * nextDx < 0;
             // left = -nx * nextDx + ny * nextDy <0;
-        }
-        const bisector = [ex, ey];
-        // dot product
-        bisectorLength = 1 / (bisector[0] * nx - bisector[1] * ny);
 
-        // if angle is to sharp and bisector length goes to infinity we cut the cone
-        // bisectorLength > 10 behaves exactly like canvas2d..
-        // ..but we cut earlier to prevent "cone explosion"
-        if (join == JOIN_MITER) {
-            if (bisectorLength > 2) {
-                curJoin = JOIN_BEVEL;
+            const bisector = [ex, ey];
+            // dot product
+            bisectorLength = 1 / (bisector[0] * nx - bisector[1] * ny);
+
+            if (bisectorLength == Infinity) {
+                // parallel
+                bisectorExceeds = true;
+                ex = 2 * SCALE;
+                ey = 2 * SCALE;
+            } else {
+                // if angle is to sharp and bisector length goes to infinity we cut the cone
+                // bisectorLength > 10 behaves exactly like canvas2d..
+                // ..but we cut earlier to prevent "cone explosion"
+                if (join == JOIN_MITER) {
+                    if (bisectorLength > 2) {
+                        curJoin = JOIN_BEVEL;
+                    }
+                }
+
+                ex = bisector[0] * bisectorLength;
+                ey = bisector[1] * bisectorLength;
+
+                // >2 -> >90deg
+                let b = Math.sqrt(ex * ex + ey * ey) / 2;
+                bisectorExceeds = b > 1;
+
+                if (bisectorExceeds) {
+                    ex /= b;
+                    ey /= b;
+                }
+
+                ex *= SCALE;
+                ey *= SCALE;
             }
-            if (prevBisectorLength > 2) {
-                prevJoin = JOIN_BEVEL;
-            }
-        }
-
-        ex = bisector[0] * bisectorLength;
-        ey = bisector[1] * bisectorLength;
-
-        // >2 -> >90deg
-        let b = Math.sqrt(ex * ex + ey * ey) / 2;
-        bisectorExceeds = b > 1;
-
-        if (bisectorExceeds) {
-            ex /= b;
-            ey /= b;
         }
 
         nx *= SCALE;
         ny *= SCALE;
-        ex *= SCALE;
-        ey *= SCALE;
 
         nUp = [-nx, ny];
         nDown = [nx, -ny];
@@ -261,7 +260,7 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
         p2Up = nUp;
 
         if (join != 'none') {
-            if (!last && curJoin == JOIN_MITER) {
+            if (curJoin == JOIN_MITER && vLength > 2) {
                 if (left) {
                     p2Up = [-ex, -ey];
                     p2Down = [ex, ey];
@@ -271,7 +270,7 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
                 }
             }
 
-            if (!first && !prevBisectorExceeds) {
+            if (!isEnd && !prevBisectorExceeds) {
                 if (!prevLeft) {
                     p1Down = [prevEx, prevEy];
                     if (join == 'miter') {
@@ -285,15 +284,165 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
                 }
             }
 
-
-            if (!bisectorExceeds) {
+            // if (!bisectorExceeds && totalLength ) {
+            if (!bisectorExceeds && vLength > 2) {
                 if (join != JOIN_MITER) {
-                    if (!last) {
+                    let aEx = strokeWidth * ex / SCALE;
+                    let aEy = strokeWidth * ey / SCALE;
+                    let s;
+
+                    if (left) {
+                        s = n[0] * -aEx + n[1] * -aEy;
+                    } else {
+                        s = n[0] * aEx + n[1] * aEy;
+                    }
+                    if (length < s) {
+                        bisectorExceeds = true;
+                    } else {
                         if (left) {
                             p2Up = [-ex, -ey];
                         } else {
                             p2Down = [ex, ey];
                         }
+                    }
+                }
+            }
+
+
+            if ((!first || last) && totalLength) {
+                // if ((!first || last) && vLength > 2 ) {
+                if (join == 'round') {
+                    if (prevLeft) {
+                        // Cone
+                        // 1---3
+                        //  \ /
+                        //   2
+                        let p3x = p1Down[0];
+                        let p3y = p1Down[1];
+
+                        if (last) { // reverse order
+                            p3x = p2Up[0];
+                            p3y = p2Up[1];
+                        }
+                        normal.push(
+                            prevNDown[0], prevNDown[1], prevNDown[0], prevNDown[1],
+                            prevEx, prevEy, prevEx, prevEy,
+                            p3x, p3y, p3x, p3y
+                        );
+                    } else {
+                        // Cone
+                        //   1
+                        //  / \
+                        // 2---3
+                        let p3x = p1Up[0];
+                        let p3y = p1Up[1];
+
+                        if (last) { // reverse order
+                            p3x = p2Down[0];
+                            p3y = p2Down[1];
+                        }
+                        normal.push(
+                            -prevEx, -prevEy, -prevEx, -prevEy,
+                            prevNUp[0], prevNUp[1], prevNUp[0], prevNUp[1],
+                            p3x, p3y, p3x, p3y
+                        );
+                    }
+
+                    vertex.push(prevX2, prevY2, prevX2, prevY2, prevX2, prevY2);
+                }
+
+
+                if (!first && !prevBisectorExceeds) {
+                    if (join != JOIN_MITER) {
+                        // if (join != JOIN_MITER && !(prevEvil) ) {
+                        let an = normalize([prevEx, prevEy]); // alias normal
+                        an[0] *= SCALE;
+                        an[1] *= SCALE;
+
+                        if (prevLeft) {
+                            //   1
+                            //  / \
+                            // 2---3
+                            let p3x = p1Down[0];
+                            let p3y = p1Down[1];
+
+                            if (last) { // reverse order
+                                p3x = p2Up[0];
+                                p3y = p2Up[1];
+                            }
+
+                            if (join == JOIN_BEVEL) {
+                                // allow antialias for bevel join
+                                normal.push(
+                                    -prevEx, -prevEy, -an[0], -an[1],
+                                    prevNDown[0], prevNDown[1], an[0], an[1],
+                                    p3x, p3y, an[0], an[1],
+                                );
+                            } else {
+                                normal.push(
+                                    -prevEx, -prevEy, -an[0], -an[1],
+                                    prevNDown[0], prevNDown[1], prevNDown[0], prevNDown[1],
+                                    p3x, p3y, p3x, p3y
+                                );
+                            }
+                        } else {
+                            // 1---3
+                            //  \ /
+                            //   2
+                            let p3x = p1Up[0];
+                            let p3y = p1Up[1];
+
+                            if (last) { // reverse order
+                                p3x = p1Down[0];
+                                p3y = p1Down[1];
+                            }
+
+                            if (join == JOIN_BEVEL) {
+                                // allow antialias for bevel join
+                                normal.push(
+                                    prevNUp[0], prevNUp[1], -an[0], -an[1],
+                                    prevEx, prevEy, an[0], an[1],
+                                    p3x, p3y, -an[0], -an[1]
+                                );
+                            } else {
+                                normal.push(
+                                    prevNUp[0], prevNUp[1], prevNUp[0], prevNUp[1],
+                                    prevEx, prevEy, an[0], an[1],
+                                    p3x, p3y, p3x, p3y
+                                );
+                            }
+                        }
+
+                        vertex.push(prevX2, prevY2, prevX2, prevY2, prevX2, prevY2);
+                    }
+                } else {
+                    if (!first) {
+                        // alias normal: no alias for round joins
+                        let anX = 0;
+                        let anY = 0;
+                        if (join != 'round') {
+                            let an = normalize([ex, ey]);
+                            anX = an[0] * SCALE;
+                            anY = an[1] * SCALE;
+                        }
+
+                        if (prevLeft) {
+                            let down = last ? nUp : nDown;
+                            normal.push(
+                                0, 0, 0, 0,
+                                prevNDown[0], prevNDown[1], anX, anY,
+                                down[0], down[1], anX, anY
+                            );
+                        } else {
+                            let up = last ? nDown : nUp;
+                            normal.push(
+                                0, 0, 0, 0,
+                                prevNUp[0], prevNUp[1], anX, anY,
+                                up[0], up[1], anX, anY
+                            );
+                        }
+
+                        vertex.push(prevX2, prevY2, prevX2, prevY2, prevX2, prevY2);
                     }
                 }
             }
@@ -308,7 +457,6 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
             p1Down[0], p1Down[1], nDown[0], nDown[1],
             p2Down[0], p2Down[1], nDown[0], nDown[1],
             p1Up[0], p1Up[1], nUp[0], nUp[1],
-
             // 2down -> 2up -> 1up
             //
             // 1  2
@@ -318,135 +466,43 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
             p2Up[0], p2Up[1], nUp[0], nUp[1],
             p1Up[0], p1Up[1], nUp[0], nUp[1]
         );
+
         // add vertex data
         vertex.push(
             x1, y1,
             x2, y2,
             x1, y1,
+
             x2, y2,
             x2, y2,
             x1, y1
         );
 
-
-        if (!first && join != 'none') {
-            if (join == 'round') {
-                // Cone
-                //   3
-                //  / \
-                // 1---2
-                if (prevLeft) {
-                    normal.push(
-                        prevNDown[0], prevNDown[1], prevNDown[0], prevNDown[1],
-                        p1Down[0], p1Down[1], p1Down[0], p1Down[1],
-                        prevEx, prevEy, prevEx, prevEy
-                    );
-                } else {
-                    normal.push(
-                        prevNUp[0], prevNUp[1], prevNUp[0], prevNUp[1],
-                        p1Up[0], p1Up[1], nUp[0], nUp[1],
-                        -prevEx, -prevEy, -prevEx, -prevEy
-                    );
-                }
-                vertex.push(
-                    x1, y1,
-                    x1, y1,
-                    x1, y1
-                );
-            }
-
-
-            if (!prevBisectorExceeds) {
-                if (join != JOIN_MITER) {
-                    let an = normalize([prevEx, prevEy]); // alias normal
-                    an[0] *= SCALE;
-                    an[1] *= SCALE;
-                    // 1---3
-                    //  \ /
-                    //   2
-                    if (prevLeft) {
-                        if (join == JOIN_BEVEL) {
-                            // allow antialias for bevel join
-                            normal.push(
-                                prevNDown[0], prevNDown[1], an[0], an[1],
-                                p1Up[0], p1Up[1], -an[0], -an[1],
-                                p1Down[0], p1Down[1], an[0], an[1]
-                            );
-                        } else {
-                            normal.push(
-                                prevNDown[0], prevNDown[1], prevNDown[0], prevNDown[1],
-                                p1Up[0], p1Up[1], -an[0], -an[1],
-                                p1Down[0], p1Down[1], p1Down[0], p1Down[1]
-                            );
-                        }
-                    } else {
-                        if (join == JOIN_BEVEL) {
-                            // allow antialias for bevel join
-                            normal.push(
-                                prevNUp[0], prevNUp[1], -an[0], -an[1],
-                                p1Down[0], p1Down[1], an[0], an[1],
-                                p1Up[0], p1Up[1], -an[0], -an[1],
-                            );
-                        } else {
-                            normal.push(
-                                prevNUp[0], prevNUp[1], prevNUp[0], prevNUp[1],
-                                p1Down[0], p1Down[1], an[0], an[1],
-                                p1Up[0], p1Up[1], p1Up[0], p1Up[1],
-                            );
-                        }
-                    }
-
-                    vertex.push(
-                        x1, y1,
-                        x1, y1,
-                        x1, y1
-                    );
-                }
-            } else {
-                if (!first) {
-                    // alias normal: no alias for round joins
-                    let anX = 0;
-                    let anY = 0;
-                    if (join != 'round') {
-                        let an = normalize([ex, ey]);
-                        anX = an[0] * SCALE;
-                        anY = an[1] * SCALE;
-                    }
-                    vertex.push(x1, y1, x1, y1, x1, y1);
-
-                    if (prevLeft) {
-                        normal.push(
-                            0, 0, 0, 0,
-                            prevNDown[0], prevNDown[1], anX, anY,
-                            nDown[0], nDown[1], anX, anY
-                        );
-                    } else {
-                        normal.push(
-                            0, 0, 0, 0,
-                            prevNUp[0], prevNUp[1], anX, anY,
-                            nUp[0], nUp[1], anX, anY
-                        );
-                    }
-                }
-                //
-            }
-        }
-
-        if (first) {
+        if (first || last) {
             addCap(cap, x1, y1, nx, ny, vertex, normal);
         }
 
-        if (last) {
+        if (first && last) {
             addCap(cap, x2, y2, -nx, -ny, vertex, normal);
+        }
+
+        // length so far including current segment
+        length += totalLength;
+
+        if (lengthSoFar) {
+            lengthSoFar.push(
+                totalLength, length, totalLength,
+                length, length, totalLength
+            );
         }
 
         prevNUp = nUp;
         prevNDown = nDown;
-        prevP2Up = p2Up;
-        prevP2Down = p2Down;
-
         prevEx = ex;
         prevEy = ey;
+
+        prevX2 = x2;
+        prevY2 = y2;
 
         x1 = x2;
         y1 = y2;
@@ -457,6 +513,7 @@ const addLineString = (vertex: number[], normal: number[], coordinates: [number,
         prevJoin = curJoin;
         totalLength = length;
     }
+
     // console.timeEnd('LSV');
 
     return segments;

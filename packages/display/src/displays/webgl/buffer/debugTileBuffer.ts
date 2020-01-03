@@ -68,7 +68,6 @@ const createGridTileBuffer = (tileSize: 256 | 512, color: number[] = [1.0, 0.0, 
     ]);
     let vLength = 5;
     let normal = [];
-    let vIndex = [];
 
     for (let c = 0, stop = (vLength - 1) * 4; c < stop; c += 4) {
         let i1 = c * 2;
@@ -78,15 +77,13 @@ const createGridTileBuffer = (tileSize: 256 | 512, color: number[] = [1.0, 0.0, 
         let x2 = vertex[i2];
         let y2 = vertex[i2 + 1];
         let vecAB = normalize([x2 - x1, y2 - y1]);
+        vecAB[0] *= 8192;
+        vecAB[1] *= 8192;
         normal.push(
             vecAB[1], -vecAB[0], // p11
             -vecAB[1], vecAB[0], // p12
             vecAB[1], -vecAB[0], // p12
             -vecAB[1], vecAB[0] // p22
-        );
-        vIndex.push(
-            c, c + 2, c + 1,
-            c + 1, c + 2, c + 3,
         );
     }
 
@@ -95,13 +92,19 @@ const createGridTileBuffer = (tileSize: 256 | 512, color: number[] = [1.0, 0.0, 
         data: vertex,
         size: 2
     });
-    let geoGroup = new GeometryGroup(vIndex, 'Line');
+    let geoGroup = new GeometryGroup({
+        first: 0,
+        count: vertex.length/2
+    }, 'Line');
+
     geoGroup.addUniform('u_zIndex', 0.0);
     geoGroup.addAttribute('a_normal', {
-        data: new Int8Array(normal),
-        normalized: true,
+        // data: new Float32Array(normal),
+        data: new Int16Array(normal),
+        // normalized: true,
         size: 2
     });
+
     geoGroup.addUniform('u_fill', color);
     geoGroup.addUniform('u_strokeWidth', strokeWidth);
 
@@ -111,6 +114,7 @@ const createGridTileBuffer = (tileSize: 256 | 512, color: number[] = [1.0, 0.0, 
     gridTileBuffer.addGroup(geoGroup);
 
 
+    console.log(gridTileBuffer);
     return gridTileBuffer;
 };
 

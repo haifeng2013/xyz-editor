@@ -19,8 +19,4 @@ void main(void){
 
     gl_FragColor = u_fill;
     gl_FragColor.a *= alpha;
-
-    if (alpha < 1.0){
-//        gl_FragColor = vec4(.0, .0, 1., 1.);
-    }
 }
