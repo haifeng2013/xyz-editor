@@ -440,21 +440,19 @@ class FeatureFactory {
 
                         group.last = vGroup.vertex.length;
                     } else if (type == 'Circle' || type == 'Rect') {
-                        vertex = vertexGroups.Point.vertex;
-                        vStart = vertex.length;
+                        // vertex = vertexGroups.Point.vertex;
+                        // vStart = vertex.length;
 
-                        if (linePointVertexOffsets == null) {
-                            linePointVertexOffsets = [vStart / 2, vStart / 2];
-                            for (let c = 0, i; c < coordinates.length; c++) {
-                                if (i = addPoint(vertex, coordinates[c], tile, tileSize)) {
-                                    linePointVertexOffsets[1] = i / 2;
-                                }
-                            }
+                        if (!group.data) {
+                            group.data = new PointData();
+                            group.first = 0;
                         }
 
-                        for (let c = linePointVertexOffsets[0], len = linePointVertexOffsets[1]; c < len; c++) {
-                            vIndex[vIndex.length] = c;
+                        for (let c = 0, i; c < coordinates.length; c++) {
+                            addPoint(group.data.vertex, coordinates[c], tile, tileSize);
                         }
+
+                        group.last = group.data.vertex.length;
                     } else if (type == 'Text') {
                         let glyphs = group.glyphs;
 
