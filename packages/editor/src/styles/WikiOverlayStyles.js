@@ -128,7 +128,7 @@ const OverlayStyles = function() {
             type: 'Circle',
             radius: (feature) => {
                 const style = feature.properties.LINE.style[0];
-                return style.strokeWidth / 20 + 4 ^ 0;
+                return style.strokeWidth / 2 + 4 ^ 0;
             },
             stroke: (feature) => {
                 const style = feature.properties.LINE.style.filter((s) => s.type == 'Line');
@@ -145,7 +145,7 @@ const OverlayStyles = function() {
         'LINE_VIRTUAL_SHAPE': [{
             zIndex: 0,
             type: 'Circle',
-            radius: (feature) => feature.properties.LINE.style[0].strokeWidth / 20 ^ 0,
+            radius: (feature) => feature.properties.LINE.style[0].strokeWidth / 2 ^ 0,
             fill: '#151515'
         }],
 
